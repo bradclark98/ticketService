@@ -6,12 +6,12 @@ package com.walmart.sample.common;
 public enum ReservationState {
 
     /**
-     * The initial state a Reservation is in prior to reserving.
+     * The initial state a SeatHold is in prior to reserving.
      */
     HOLD,
 
     /**
-     * The final state a Reservation is in after customer has confirmed.
+     * The final state a SeatHold is in after customer has confirmed.
      */
     RESERVED,
 

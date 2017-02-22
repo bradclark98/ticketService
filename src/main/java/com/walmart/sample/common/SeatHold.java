@@ -1,36 +1,42 @@
 package com.walmart.sample.common;
 
 import lombok.Builder;
+import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.ToString;
 
-import java.util.Date;
 import java.util.List;
 
 /**
- * The Reservatioin class maintains the registration information including customer, venue and seat information.
+ * The SeatHold class maintains the registration information including customer, venue and seat information.
  */
 @Getter
 @Setter
 @Builder
 @ToString
-public class Reservation {
+@EqualsAndHashCode(exclude = { "venue", "seats" })
+public class SeatHold {
 
     /**
-     * The time the reservation was made.
+     * The seat hold id.
      */
-    private Date reservationTimestamp;
+    private int seatHoldId;
 
     /**
-     * The state of the reservation.
+     * The confirmation Code.
+     */
+    private String confirmationCode;
+
+    /**
+     * The state of the seatHold.
      */
     private ReservationState state;
 
     /**
      * The customer making the reservation.
      */
-    private Customer customer;
+    private String customerEmail;
 
     /**
      * The venue.

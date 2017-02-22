@@ -6,6 +6,7 @@ import org.testng.annotations.Test;
 import org.testng.Assert;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.IntStream;
 
 /**
  * Unit test for Venue.
@@ -29,18 +30,22 @@ public class VenueTest {
     static final int SEATS_PER_ROW = 10;
 
     /**
+     * Test email
+     */
+    static final String TEST_EMAIL = "email@test.com";
+
+    /**
      * Initialize venue seats for use in tests.
      */
     @BeforeClass
     public void setUp() {
-
-        for (int seatNumber = 1; seatNumber <= SEATS_PER_ROW; seatNumber++) {
-            for (int row = 1; row <= ROWS; row++) {
+        IntStream.range(1, SEATS_PER_ROW).forEach(seatNumber -> {
+            IntStream.range(1, ROWS).forEach(row -> {
                 //TODO Simplistic seat quality algorithm with row and seat number.  Only impacts Comparator if changed.
                 seats.add(Seat.builder().rowNumber(row).seatNumber(seatNumber).seatQuality(
                     1000000 - (ROWS - row * 1000 + SEATS_PER_ROW - seatNumber)).build());
-            }
-        }
+            });
+        });
     }
 
     /**
@@ -53,16 +58,18 @@ public class VenueTest {
         int initialAvailable = venue.getNumberOfAvailableSeats();
         // Make multiple seat requests
         List<Seat> allSeatsRequested = new ArrayList<Seat>();
-        for (int i = 0; i < 5; i++) {
+
+        IntStream.range(1, 5).forEach(i -> {
             try {
                 int requestedSeats = 4;
-                List<Seat> seatsRequested = venue.getAvailableSeats(requestedSeats);
-                Assert.assertEquals(seatsRequested.size(), requestedSeats);
-                allSeatsRequested.addAll(seatsRequested);
+                SeatHold seatHold = venue.getAvailableSeats(TEST_EMAIL, requestedSeats);
+                Assert.assertEquals(seatHold.getSeats().size(), requestedSeats);
+                allSeatsRequested.addAll(seatHold.getSeats());
             } catch (VenueException e) {
                 Assert.fail("Encountered error " + e.getMessage());
             }
-        }
+        });
+
         Assert.assertEquals(initialAvailable - allSeatsRequested.size(), venue.getNumberOfAvailableSeats());
 
         // Verify priorityOrder
@@ -87,13 +94,13 @@ public class VenueTest {
     public void testNoAvailableSeats() {
         Venue venue = new Venue(seats);
         try {
-            venue.getAvailableSeats(seats.size());
+            venue.getAvailableSeats(TEST_EMAIL, seats.size());
         } catch (VenueException e) {
             Assert.fail("Initial seat request should succeed.");
         }
 
         try {
-            venue.getAvailableSeats(1);
+            venue.getAvailableSeats(TEST_EMAIL, 1);
             Assert.fail("Seat request should fail.");
         } catch (VenueException e) {
             Assert.assertEquals(e.getMessage(), "Number of tickets requested exceeds available tickets.");
@@ -107,13 +114,13 @@ public class VenueTest {
     public void testAvailableSeatsLessThanRequested() {
         Venue venue = new Venue(seats);
         try {
-            venue.getAvailableSeats(seats.size() - 1);
+            venue.getAvailableSeats(TEST_EMAIL, seats.size() - 1);
         } catch (VenueException e) {
             Assert.fail("Initial seat request should succeed.");
         }
 
         try {
-            venue.getAvailableSeats(2);
+            venue.getAvailableSeats(TEST_EMAIL, 2);
             Assert.fail("Seat request should fail.");
         } catch (VenueException e) {
             Assert.assertEquals(e.getMessage(), "Number of tickets requested exceeds available tickets.");
@@ -127,7 +134,7 @@ public class VenueTest {
     public void testAvailableSeatsWhenRequestedZero() {
         Venue venue = new Venue(seats);
         try {
-            List<Seat> mySeats = venue.getAvailableSeats(0);
+            SeatHold seatHold = venue.getAvailableSeats(TEST_EMAIL, 0);
             Assert.fail("Seat request of 0 should fail.");
         } catch (VenueException e) {
             Assert.assertEquals(e.getMessage(), "Must request at least 1 seat.");
@@ -142,8 +149,8 @@ public class VenueTest {
         Venue venue = new Venue(seats);
         int initialSize = venue.getNumberOfAvailableSeats();
         try {
-            List<Seat> mySeats = venue.getAvailableSeats(1);
-            Assert.assertEquals(mySeats.size() + venue.getNumberOfAvailableSeats(), initialSize);
+            SeatHold seatHold = venue.getAvailableSeats(TEST_EMAIL, 1);
+            Assert.assertEquals(seatHold.getSeats().size() + venue.getNumberOfAvailableSeats(), initialSize);
         } catch (VenueException e) {
             Assert.fail("Encountered error " + e.getMessage());
         }
@@ -157,9 +164,9 @@ public class VenueTest {
         Venue venue = new Venue(seats);
         int initialSize = venue.getNumberOfAvailableSeats();
         try {
-            List<Seat> mySeats = venue.getAvailableSeats(1);
-            Assert.assertEquals(mySeats.size() + venue.getNumberOfAvailableSeats(), initialSize);
-            venue.freeUnavailableSeats(mySeats);
+            SeatHold seatHold = venue.getAvailableSeats(TEST_EMAIL,1);
+            Assert.assertEquals(seatHold.getSeats().size() + venue.getNumberOfAvailableSeats(), initialSize);
+            venue.cancelSeatHold(seatHold);
             Assert.assertEquals(venue.getNumberOfAvailableSeats(), initialSize);
         } catch (VenueException e) {
             Assert.fail("Encountered error " + e.getMessage());
@@ -174,14 +181,14 @@ public class VenueTest {
         Venue venue = new Venue(seats);
         int initialSize = venue.getNumberOfAvailableSeats();
         try {
-            List<Seat> initialSeats = venue.getAvailableSeats(1);
-            Assert.assertEquals(initialSeats.size(), 1);
-            venue.freeUnavailableSeats(initialSeats);
-            List<Seat> newSeats = venue.getAvailableSeats(1);
-            Assert.assertEquals(newSeats.size(), 1);
-            Assert.assertTrue(initialSeats.get(0).getSeatQuality() == newSeats.get(0).getSeatQuality()
-                && initialSeats.get(0).getSeatQuality() == newSeats.get(0).getSeatQuality()
-                && initialSeats.get(0).getSeatQuality() == newSeats.get(0).getSeatQuality());
+            SeatHold seatHold = venue.getAvailableSeats(TEST_EMAIL, 1);
+            Assert.assertEquals(seatHold.getSeats().size(), 1);
+            venue.cancelSeatHold(seatHold);
+            SeatHold newSeatHold = venue.getAvailableSeats(TEST_EMAIL, 1);
+            Assert.assertEquals(newSeatHold.getSeats().size(), 1);
+            Assert.assertTrue(seatHold.getSeats().get(0).getSeatQuality() == newSeatHold.getSeats().get(0).getSeatQuality()
+                && seatHold.getSeats().get(0).getSeatQuality() == newSeatHold.getSeats().get(0).getSeatQuality()
+                && seatHold.getSeats().get(0).getSeatQuality() == newSeatHold.getSeats().get(0).getSeatQuality());
         } catch (VenueException e) {
             Assert.fail("Encountered error " + e.getMessage());
         }

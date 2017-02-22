@@ -3,7 +3,7 @@ package com.walmart.sample.common;
 /**
  * The VenueException is thrown by venue methods when there is an error while processing venue processes.
  */
-public class VenueException extends Exception {
+public class VenueException extends RuntimeException {
 
     /**
      * Constructs an Venue exception with no message.

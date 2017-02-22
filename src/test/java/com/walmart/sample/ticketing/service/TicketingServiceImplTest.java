@@ -1,11 +1,11 @@
 package com.walmart.sample.ticketing.service;
 
-import com.walmart.sample.common.Customer;
-import com.walmart.sample.common.Reservation;
 import com.walmart.sample.common.ReservationState;
 import com.walmart.sample.common.Seat;
+import com.walmart.sample.common.SeatHold;
 import com.walmart.sample.common.Venue;
 import com.walmart.sample.common.VenueException;
+
 import lombok.extern.slf4j.Slf4j;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
@@ -13,15 +13,16 @@ import org.testng.annotations.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.IntStream;
 
 /**
- * Unit test for TicketingServiceImpl
+ * Unit test for TicketServiceImpl
  */
 @Slf4j
 public class TicketingServiceImplTest {
 
     /**
-     * Initial seats used in venue creation
+     * Initial seats used in venue creation.
      */
     List<Seat> seats = new ArrayList<Seat>();
 
@@ -36,224 +37,176 @@ public class TicketingServiceImplTest {
     static final int SEATS_PER_ROW = 10;
 
     /**
-     * TicketingService being tested.
+     * Test email.
      */
-    private TicketingService ticketService = new TicketingServiceImpl();
+    static final String TEST_EMAIL = "email@test.com";
 
     /**
-     * Customer used in tests
+     * TicketingService being tested.
      */
-    private Customer customer;
+    private TicketService ticketService;
 
     /**
      * Create a simple seat list for venue creation in test cases.
      */
     @BeforeClass
     public void setUp() {
-        for (int seatNumber = 1; seatNumber <= SEATS_PER_ROW; seatNumber++) {
-            for (int row = 1; row <= ROWS; row++) {
+        IntStream.range(1, SEATS_PER_ROW).forEach(seatNumber -> {
+            IntStream.range(1, ROWS).forEach(row -> {
                 //TODO Simplistic seat quality algorithm with row and seat number.  Only impacts Comparator if changed.
                 seats.add(Seat.builder().rowNumber(row).seatNumber(seatNumber).seatQuality(
                     1000000 - (ROWS - row * 1000 + SEATS_PER_ROW - seatNumber)).build());
-            }
-        }
-
-        customer = Customer.builder().firstName("Homer").lastName("Simpson").build();
+            });
+        });
     }
 
     /**
-     * Tests getNumberOfAvailableSeats method in {@code TicketingServiceImpl} and the cancellation after threshold.
+     * Tests getNumberOfAvailableSeats method in {@code TicketServiceImpl} and the cancellation after threshold.
      */
     @Test(groups = {"fast", "unit"})
     public void testGetNumberOfAvailableSeats() {
 
-        Venue venue = new Venue(seats);
-        int initialAvailableSeats = ticketService.getNumberOfAvailableSeats(venue);
+        // Reset the venue
+        ticketService = new TicketServiceImpl(new Venue(seats));
+
+        int initialAvailableSeats = ticketService.numSeatsAvailable();
         Assert.assertEquals(seats.size(), initialAvailableSeats);
 
-        List<Reservation> reservations = new ArrayList<Reservation>();
+        List<SeatHold> seatHolds = new ArrayList<SeatHold>();
 
-        for (int i = 0; i < 10; i++) {
-            try {
-                reservations.add(ticketService.holdBestAvailableSeats(customer, venue, 5));
-            } catch (VenueException e) {
-                Assert.fail("Unexpected VenueException thrown");
-            }
+        IntStream.range(0, 10).forEach(i -> {
+            seatHolds.add(ticketService.findAndHoldSeats(5, TEST_EMAIL));
+        });
+
+        int numSeatsOnHold = 0;
+        for (SeatHold seatHold : seatHolds) {
+            numSeatsOnHold += seatHold.getSeats().size();
         }
-        int reservedSeats = 0;
-        for (Reservation reservation : reservations) {
-            reservedSeats += reservation.getSeats().size();
-        }
-        Assert.assertEquals(initialAvailableSeats - reservedSeats, ticketService.getNumberOfAvailableSeats(venue));
+        Assert.assertEquals(initialAvailableSeats - numSeatsOnHold, ticketService.numSeatsAvailable(), "Available seats should be initial seats minus held seats");
 
         // Wait until hold expires
         try {
-            Thread.sleep((TicketingService.HOLD_EXPIRATION_SECONDS + 1) * 1000);
+            Thread.sleep((Venue.HOLD_EXPIRATION_SECONDS + 5) * 1000);
         } catch (InterruptedException e) {
             Assert.fail("Failed to sleep beyond HOLD_EXPIRATION_SECONDS");
         }
 
         // All seats should be available
-        Assert.assertEquals(initialAvailableSeats, ticketService.getNumberOfAvailableSeats(venue));
-    }
-
-
-    /**
-     * Tests getNumberOfAvailableSeats and cancelReservation method in {@code TicketingServiceImpl} before cancel threshold.
-     */
-    @Test(groups = {"fast", "unit"})
-    public void testGetNumberOfAvailableSeatsAfterCancel() {
-
-        Venue venue = new Venue(seats);
-        int initialAvailableSeats = ticketService.getNumberOfAvailableSeats(venue);
-        Assert.assertEquals(seats.size(), initialAvailableSeats);
-
-        List<Reservation> reservations = new ArrayList<Reservation>();
-        List<Reservation> reservationsToCancel = new ArrayList<Reservation>();
-
-        try {
-            for (int i = 0; i < 10; i++) {
-                Reservation reservation = ticketService.holdBestAvailableSeats(customer, venue, 5);
-                reservations.add(reservation);
-                if (i % 2 == 0) {
-                    reservationsToCancel.add(reservation);
-                }
-            }
-            // Get reserved seat count before cancel.
-            int reservedSeatCnt = 0;
-            for (Reservation reservation : reservations) {
-                reservedSeatCnt += reservation.getSeats().size();
-            }
-            Assert.assertEquals(initialAvailableSeats - reservedSeatCnt, ticketService.getNumberOfAvailableSeats(venue));
-
-            int cancelledSeats = 0;
-            for (Reservation reservation : reservationsToCancel) {
-                ticketService.cancelReservation(reservation);
-                cancelledSeats += reservation.getSeats().size();
-            }
-
-            // Available seats should equal initial seats - reservedSeatCnt
-            Assert.assertEquals(initialAvailableSeats - (reservedSeatCnt - cancelledSeats), ticketService.getNumberOfAvailableSeats(venue));
-
-        } catch (VenueException e) {
-            Assert.fail("Unexpected VenueException thrown");
-        }
+        Assert.assertEquals(initialAvailableSeats, ticketService.numSeatsAvailable(), "All seats should be available");
     }
 
 
 
     /**
-     * Tests getNumberOfAvailableSeats and confirmReservation method in {@code TicketingServiceImpl} before cancel threshold.
+     * Tests getNumberOfAvailableSeats and confirmReservation method in {@code TicketServiceImpl} before cancel threshold.
      */
     @Test(groups = {"fast", "unit"})
     public void testGetNumberOfAvailableSeatsAfterConfirm() {
 
-        Venue venue = new Venue(seats);
-        List<Reservation> reservations = new ArrayList<Reservation>();
+        // Reset the venue
+        ticketService = new TicketServiceImpl(new Venue(seats));
+
+        List<SeatHold> seatHolds = new ArrayList<SeatHold>();
 
         try {
 
-            int initialSeatCount = ticketService.getNumberOfAvailableSeats(venue);
+            int initialSeatCount = ticketService.numSeatsAvailable();
 
-            for (int i = 0; i < 10; i++) {
-                reservations.add(ticketService.holdBestAvailableSeats(customer, venue, 5));
-            }
+            IntStream.range(0, 10).forEach(i -> {
+                seatHolds.add(ticketService.findAndHoldSeats(5, TEST_EMAIL));
+            });
 
-            int remainingSeatCount = ticketService.getNumberOfAvailableSeats(venue);
+            int remainingSeatCount = ticketService.numSeatsAvailable();
+            int holdSeatCount = 0;
 
-
-            // Check for reservations in hold state
-            for (Reservation reservation: reservations) {
-                Assert.assertEquals(reservation.getState(), ReservationState.HOLD);
-                ticketService.confirmReservation(reservation);
-            }
+            // Reserve seats
+            seatHolds.forEach(seatHold -> ticketService.reserveSeats(seatHold.getSeatHoldId(), TEST_EMAIL));
 
             // Wait until hold expires
             try {
-                Thread.sleep((TicketingService.HOLD_EXPIRATION_SECONDS + 1) * 1000);
+                Thread.sleep((Venue.HOLD_EXPIRATION_SECONDS + 5) * 1000);
             } catch (InterruptedException e) {
                 Assert.fail("Failed to sleep beyond HOLD_EXPIRATION_SECONDS");
             }
 
-            // Check for reservations in reserved state
-            for (Reservation reservation: reservations) {
-                Assert.assertEquals(reservation.getState(), ReservationState.RESERVED);
-            }
+            // Check for seatHolds in reserved state
+            seatHolds.forEach(seatHold -> Assert.assertEquals(seatHold.getState(), ReservationState.RESERVED));
 
-            // Verify no reservations were cancelled
-            Assert.assertEquals(remainingSeatCount, ticketService.getNumberOfAvailableSeats(venue));
+            // Verify no seatHolds were cancelled
+            Assert.assertEquals(remainingSeatCount, ticketService.numSeatsAvailable());
 
         } catch (VenueException e) {
             Assert.fail("Unexpected VenueException thrown");
         }
     }
+
     /**
-     * Tests the holdBestAvailableSeats method in {@code TicketingServiceImpl}.
+     * Tests the holdBestAvailableSeats method in {@code TicketServiceImpl}.
      */
     @Test(groups = {"fast", "unit"})
     public void testHoldBestAvailableSeats() {
 
-        Venue venue = new Venue(seats);
-        List<Reservation> reservations = new ArrayList<Reservation>();
+        // Reset the venue
+        ticketService = new TicketServiceImpl(new Venue(seats));
 
-        int initialSeatCount = ticketService.getNumberOfAvailableSeats(venue);
-        for (int i = 0; i < 10; i++) {
+        List<SeatHold> seatHolds = new ArrayList<SeatHold>();
+
+        int initialSeatCount = ticketService.numSeatsAvailable();
+        IntStream.range(0, 10).forEach(i -> {
             try {
-                reservations.add(ticketService.holdBestAvailableSeats(customer, venue, 5));
+                seatHolds.add(ticketService.findAndHoldSeats(5, TEST_EMAIL));
             } catch (VenueException e) {
                 Assert.fail("Unexpected VenueException thrown");
             }
-        }
+        });
 
-        // Check for reservations in hold state
-        int holdSeatCount = 0;
-        for (Reservation reservation : reservations) {
-            holdSeatCount += reservation.getSeats().size();
-            Assert.assertEquals(reservation.getState(), ReservationState.HOLD);
-        }
+        // Check for seatHolds in hold state
+        int holdSeatCount = seatHolds.stream()
+            .filter(seatHold -> seatHold.getState() == ReservationState.HOLD)
+            .mapToInt(seatHold -> seatHold.getSeats().size()).reduce(0, Integer::sum);
 
-        Assert.assertEquals(ticketService.getNumberOfAvailableSeats(venue), initialSeatCount - holdSeatCount);
+        Assert.assertEquals(ticketService.numSeatsAvailable(), initialSeatCount - holdSeatCount);
     }
 
 
     /**
-     * Tests testHoldBestAvailableSeats and cancelReservation method in {@code TicketingServiceImpl}, initial hold and then cancellation after threshold.
+     * Tests testHoldBestAvailableSeats and cancelReservation method in {@code TicketServiceImpl}, initial hold and then cancellation after threshold.
      */
     @Test(groups = {"fast", "unit"})
     public void testHoldSeatAndHoldExpiration() {
 
-        Venue venue = new Venue(seats);
-        List<Reservation> reservations = new ArrayList<Reservation>();
+        // Reset the venue
+        ticketService = new TicketServiceImpl(new Venue(seats));
 
-        int initialSeatCount = ticketService.getNumberOfAvailableSeats(venue);
+        // Keep track of multiple seatHolds
+        List<SeatHold> seatHolds = new ArrayList<SeatHold>();
 
-        for (int i = 0; i < 10; i++) {
-            try {
-                reservations.add(ticketService.holdBestAvailableSeats(customer, venue, 5));
-            } catch (VenueException e) {
-                Assert.fail("Unexpected VenueException thrown");
-            }
-        }
+        // Get initial seat count
+        int initialSeatCount = ticketService.numSeatsAvailable();
 
-        // Check for reservations in hold state
-        for (Reservation reservation: reservations) {
-            Assert.assertEquals(reservation.getState(), ReservationState.HOLD);
+        IntStream.range(0, 10).forEach(i -> {
+            seatHolds.add(ticketService.findAndHoldSeats(5, TEST_EMAIL));
+        });
+
+        // Check for seatHolds in hold state
+        for (SeatHold seatHold : seatHolds) {
+            Assert.assertEquals(seatHold.getState(), ReservationState.HOLD);
         }
 
         // Wait until hold expires
         try {
-            Thread.sleep((TicketingService.HOLD_EXPIRATION_SECONDS + 1) * 1000);
+            Thread.sleep((Venue.HOLD_EXPIRATION_SECONDS + 5) * 1000);
         } catch (InterruptedException e) {
             Assert.fail("Failed to sleep beyond HOLD_EXPIRATION_SECONDS");
         }
 
-        // Check for reservations in hold state
-        for (Reservation reservation: reservations) {
-            Assert.assertEquals(reservation.getState(), ReservationState.CANCELLED);
+        // Verify SeatHold were cancelled
+        for (SeatHold seatHold : seatHolds) {
+            Assert.assertEquals(seatHold.getState(), ReservationState.CANCELLED);
         }
 
-
-        Assert.assertEquals(ticketService.getNumberOfAvailableSeats(venue), initialSeatCount);
+        // Verify seats were returned to available seats
+        Assert.assertEquals(ticketService.numSeatsAvailable(), initialSeatCount);
     }
 
 }

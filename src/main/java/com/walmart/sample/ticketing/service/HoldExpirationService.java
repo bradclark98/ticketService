@@ -1,8 +1,8 @@
 package com.walmart.sample.ticketing.service;
 
 import com.walmart.sample.common.ReservationState;
+import com.walmart.sample.common.SeatHold;
 import com.walmart.sample.common.VenueException;
-import com.walmart.sample.common.Reservation;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -12,22 +12,17 @@ import lombok.extern.slf4j.Slf4j;
 public class HoldExpirationService implements Runnable {
 
     /**
-     * Reservation that will be cancelled upon expiration.
+     * SeatHold that will be cancelled upon expiration.
      */
-    private Reservation reservation;
-
-    /**
-     * The ticket service.
-     */
-    private static TicketingService ticketService = new TicketingServiceImpl();
+    private SeatHold seatHold;
 
     /**
      * Constructs a hold expiration service.
      *
-     * @param reservation to check hold expiration.
+     * @param seatHold to check hold expiration.
      */
-    public HoldExpirationService(final Reservation reservation) {
-        this.reservation = reservation;
+    public HoldExpirationService(final SeatHold seatHold) {
+        this.seatHold = seatHold;
     }
 
     /**
@@ -36,11 +31,12 @@ public class HoldExpirationService implements Runnable {
     @Override
     public void run() {
         try {
-            // if reservation is on hold cancel
-            log.debug("Checking reservation for hold expiration " + reservation);
-            if (reservation.getState() == ReservationState.HOLD) {
-                log.debug("Hold threshold exceeded, cancelling " + reservation);
-                ticketService.cancelReservation(reservation);
+            log.debug("Checking seat hold id " + seatHold.getSeatHoldId() + " for expiration.");
+
+            // Only cancel if seat is on hold
+            if (seatHold.getState() == ReservationState.HOLD) {
+                log.debug("Seat hold " + seatHold.getSeatHoldId() + " Hold expired");
+                seatHold.getVenue().cancelSeatHold(seatHold);
             }
         } catch (VenueException e) {
             e.printStackTrace();
